@@ -1,0 +1,6 @@
+{
+  "name": "Usem Nnyin - Ibibio & Efik Language Learning Platform",
+  "description": "Preserving and revitalizing Ibibio and Efik languages through an interactive bilingual dictionary, Duolingo-style gamified learning academy, audio pronunciation, and cultural heritage exploration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
