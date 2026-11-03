@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Lesson, Exercise } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { db, auth } from '../lib/firebase';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { LESSONS_DATABASE } from '../data/seedData';
+import { recordLessonCompletion } from '../utils/progress';
 import {
   playIndigenousTone,
   playSuccessChime,
   playMistakeChime,
   playLessonCompleteFanfare,
 } from '../utils/audio';
+import { triggerCelebrationConfetti, triggerCourseCompletionFireworks } from '../utils/confetti';
 import {
   X,
   Volume2,
@@ -21,20 +22,26 @@ import {
   RotateCcw,
   Flame,
   Check,
+  Trophy,
+  PartyPopper,
+  BookOpen,
 } from 'lucide-react';
 
 interface LessonModalProps {
   lesson: Lesson;
   onClose: () => void;
   onLessonCompleted: (earnedXp: number, newAchievements: string[]) => void;
+  onStartNextLesson?: (nextLesson: Lesson) => void;
 }
 
 export const LessonModal: React.FC<LessonModalProps> = ({
   lesson,
   onClose,
   onLessonCompleted,
+  onStartNextLesson,
 }) => {
   const { token, refreshUser, setUser } = useAuth();
+  const [currentLesson, setCurrentLesson] = useState<Lesson>(lesson);
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState<Record<number, any>>({});
   const [feedbackStatus, setFeedbackStatus] = useState<'idle' | 'correct' | 'incorrect'>('idle');
@@ -45,6 +52,25 @@ export const LessonModal: React.FC<LessonModalProps> = ({
     earnedXp: 0,
     newAchievements: [] as string[],
   });
+
+  // Keep currentLesson in sync if prop changes
+  useEffect(() => {
+    setCurrentLesson(lesson);
+  }, [lesson]);
+
+  // Track all lessons in this curriculum track
+  const trackLessons = useMemo(() => {
+    return LESSONS_DATABASE.filter((l) => l.language === currentLesson.language).sort(
+      (a, b) => a.order - b.order
+    );
+  }, [currentLesson.language]);
+
+  const currentModuleIdx = trackLessons.findIndex((l) => l.id === currentLesson.id);
+  const nextLesson =
+    currentModuleIdx >= 0 && currentModuleIdx < trackLessons.length - 1
+      ? trackLessons[currentModuleIdx + 1]
+      : null;
+  const isFinalModule = !nextLesson;
 
   // Multiple Choice / Fill blank selection
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -58,7 +84,7 @@ export const LessonModal: React.FC<LessonModalProps> = ({
   const [selectedLeft, setSelectedLeft] = useState<string | null>(null);
   const [selectedRight, setSelectedRight] = useState<string | null>(null);
 
-  const currentExercise: Exercise = lesson.exercises[currentExerciseIndex];
+  const currentExercise: Exercise = currentLesson.exercises[currentExerciseIndex] || currentLesson.exercises[0];
 
   // Initialize exercise state when moving to a new exercise
   React.useEffect(() => {
@@ -75,7 +101,7 @@ export const LessonModal: React.FC<LessonModalProps> = ({
       setSelectedLeft(null);
       setSelectedRight(null);
     }
-  }, [currentExerciseIndex]);
+  }, [currentExerciseIndex, currentLesson.id]);
 
   const handlePlayAudio = (text?: string) => {
     const toPlay = text || currentExercise.audio_text || currentExercise.prompt;
@@ -138,7 +164,11 @@ export const LessonModal: React.FC<LessonModalProps> = ({
   const handleCheckAnswer = () => {
     let isCorrect = false;
 
-    if (currentExercise.exercise_type === 'multiple_choice' || currentExercise.exercise_type === 'fill_blank' || currentExercise.exercise_type === 'listening') {
+    if (
+      currentExercise.exercise_type === 'multiple_choice' ||
+      currentExercise.exercise_type === 'fill_blank' ||
+      currentExercise.exercise_type === 'listening'
+    ) {
       isCorrect = selectedOption === currentExercise.correct_answer;
     } else if (currentExercise.exercise_type === 'sentence_reorder') {
       const correctArr = Array.isArray(currentExercise.correct_answer)
@@ -172,24 +202,33 @@ export const LessonModal: React.FC<LessonModalProps> = ({
 
   // Continue to Next Exercise or Complete
   const handleContinue = async () => {
-    if (currentExerciseIndex < lesson.exercises.length - 1) {
+    if (currentExerciseIndex < currentLesson.exercises.length - 1) {
       setCurrentExerciseIndex((prev) => prev + 1);
     } else {
       // Completed all questions in the lesson
-      const finalAccuracy = Math.round((stats.correctCount / Math.max(stats.totalAnswered, 1)) * 100);
-      const earnedXp = Math.max(Math.round((lesson.xp_reward * Math.min(finalAccuracy, 100)) / 100), 10);
+      const finalAccuracy = Math.round(
+        (stats.correctCount / Math.max(stats.totalAnswered, 1)) * 100
+      );
+      const earnedXp = Math.max(
+        Math.round((currentLesson.xp_reward * Math.min(finalAccuracy, 100)) / 100),
+        10
+      );
       const todayStr = new Date().toISOString().split('T')[0];
 
       // Optimistically increment state immediately so dashboard updates in real-time
       setUser((prev) => {
         if (!prev) return null;
         const newTotal = (prev.total_xp || 0) + earnedXp;
-        const newDaily = (prev.last_activity_date === todayStr ? (prev.daily_xp_today || 0) : 0) + earnedXp;
+        const newDaily =
+          (prev.last_activity_date === todayStr ? prev.daily_xp_today || 0 : 0) + earnedXp;
         let newStreak = prev.current_streak || 0;
         if (!prev.last_activity_date) {
           newStreak = 1;
         } else if (prev.last_activity_date !== todayStr) {
-          const diff = Math.round((new Date(todayStr).getTime() - new Date(prev.last_activity_date).getTime()) / 86400000);
+          const diff = Math.round(
+            (new Date(todayStr).getTime() - new Date(prev.last_activity_date).getTime()) /
+              86400000
+          );
           newStreak = diff === 1 ? newStreak + 1 : 1;
         }
         return {
@@ -202,91 +241,61 @@ export const LessonModal: React.FC<LessonModalProps> = ({
         };
       });
 
+      // Persist to Firestore, Express backend, and LocalStorage
       try {
-        // 1. Sync to Firebase Cloud Firestore for cross-device persistence
-        if (auth.currentUser) {
-          const userDocRef = doc(db, 'users', auth.currentUser.uid);
-          const userSnap = await getDoc(userDocRef);
+        const result = await recordLessonCompletion({
+          lesson: currentLesson,
+          score: finalAccuracy,
+          earnedXp,
+          token,
+        });
 
-          let firestoreTotalXp = earnedXp;
-          let firestoreDailyXp = earnedXp;
-          let firestoreStreak = 1;
-          let firestoreLongest = 1;
-
-          if (userSnap.exists()) {
-            const prevData = userSnap.data() as any;
-            firestoreTotalXp = (prevData.total_xp || 0) + earnedXp;
-            firestoreDailyXp = (prevData.last_activity_date === todayStr ? (prevData.daily_xp_today || 0) : 0) + earnedXp;
-            firestoreStreak = prevData.current_streak || 0;
-            if (!prevData.last_activity_date) {
-              firestoreStreak = 1;
-            } else if (prevData.last_activity_date !== todayStr) {
-              const diff = Math.round((new Date(todayStr).getTime() - new Date(prevData.last_activity_date).getTime()) / 86400000);
-              firestoreStreak = diff === 1 ? firestoreStreak + 1 : 1;
-            }
-            firestoreLongest = Math.max(prevData.longest_streak || 0, firestoreStreak);
-          }
-
-          // Update parent user document in Firestore
-          await setDoc(
-            userDocRef,
-            {
-              total_xp: firestoreTotalXp,
-              daily_xp_today: firestoreDailyXp,
-              current_streak: firestoreStreak,
-              longest_streak: firestoreLongest,
-              last_activity_date: todayStr,
-            },
-            { merge: true }
-          );
-
-          // Update lesson progress subcollection in Firestore
-          const progressDocRef = doc(db, 'users', auth.currentUser.uid, 'progress', lesson.id);
-          await setDoc(
-            progressDocRef,
-            {
-              lesson_id: lesson.id,
-              completed: true,
-              score: finalAccuracy,
-              xp_earned: earnedXp,
-              completed_at: new Date().toISOString(),
-            },
-            { merge: true }
-          );
-        }
-
-        // 2. Sync to Backend Express Database (data/db.json)
-        if (token) {
-          const res = await fetch('/api/lessons/complete', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              lesson_id: lesson.id,
-              score: finalAccuracy,
-            }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setStats((prev) => ({
-              ...prev,
-              earnedXp: data.earned_xp || earnedXp,
-              newAchievements: data.new_achievements || [],
-            }));
-            if (data.user) {
-              setUser(data.user);
-            }
-          }
-        }
+        setStats((prev) => ({
+          ...prev,
+          earnedXp: result.earnedXp || earnedXp,
+          newAchievements: result.newAchievements || [],
+        }));
       } catch (err) {
-        console.error('Failed to save completion to database:', err);
+        console.error('Failed to save completion:', err);
       }
 
-      playLessonCompleteFanfare();
+      // Check if all modules in course are completed
+      if (isFinalModule) {
+        triggerCourseCompletionFireworks();
+        playLessonCompleteFanfare();
+      } else {
+        triggerCelebrationConfetti();
+        playLessonCompleteFanfare();
+      }
+
       setIsCompleted(true);
     }
+  };
+
+  // Seamlessly transition directly to the next unlocked module
+  const handleProceedToNextModule = () => {
+    if (!nextLesson) return;
+    onLessonCompleted(stats.earnedXp || currentLesson.xp_reward, stats.newAchievements);
+    if (onStartNextLesson) {
+      onStartNextLesson(nextLesson);
+    }
+    setCurrentLesson(nextLesson);
+    setCurrentExerciseIndex(0);
+    setUserAnswers({});
+    setFeedbackStatus('idle');
+    setIsCompleted(false);
+    setSelectedOption(null);
+    setSentenceTokens([]);
+    setAvailableTokens([]);
+    setMatchedPairs([]);
+    setSelectedLeft(null);
+    setSelectedRight(null);
+    setStats({
+      correctCount: 0,
+      totalAnswered: 0,
+      earnedXp: 0,
+      newAchievements: [],
+    });
   };
 
   const progressPercent = Math.round(
@@ -294,10 +303,10 @@ export const LessonModal: React.FC<LessonModalProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-stone-900/75 backdrop-blur-xs">
-      <div className="bg-[#FAF7F2] rounded-3xl max-w-2xl w-full h-[90vh] max-h-[720px] flex flex-col overflow-hidden shadow-2xl border border-stone-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-stone-900/75 backdrop-blur-xs overscroll-contain">
+      <div className="bg-[#FAF7F2] rounded-3xl max-w-2xl w-full h-[calc(100dvh-1rem)] sm:h-[min(90dvh,720px)] max-h-[720px] flex flex-col overflow-hidden shadow-2xl border border-stone-200">
         {/* Top Header bar with progress */}
-        <div className="p-4 sm:p-6 border-b border-stone-200/80 bg-white flex items-center justify-between gap-4 shrink-0">
+        <div className="p-3.5 sm:p-5 border-b border-stone-200/80 bg-white flex items-center justify-between gap-3 sm:gap-4 shrink-0">
           <button
             onClick={onClose}
             className="p-1.5 rounded-xl hover:bg-stone-100 text-stone-500 hover:text-stone-800 transition-colors cursor-pointer"
@@ -307,27 +316,27 @@ export const LessonModal: React.FC<LessonModalProps> = ({
           </button>
 
           {/* Duolingo-style Progress Bar */}
-          <div className="flex-1 bg-stone-100 h-3 rounded-full overflow-hidden border border-stone-200/60">
+          <div className="flex-1 bg-stone-100 h-2.5 sm:h-3 rounded-full overflow-hidden border border-stone-200/60">
             <div
               className="bg-emerald-600 h-full rounded-full transition-all duration-300 ease-out"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200/60">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200/60 shrink-0">
             <Zap className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-            <span>+{lesson.xp_reward} XP</span>
+            <span>+{currentLesson.xp_reward} XP</span>
           </div>
         </div>
 
         {/* Lesson Body: Interactive Exercise Stage */}
         {!isCompleted ? (
-          <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex flex-col justify-center max-w-xl mx-auto w-full">
+          <div className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-8 flex flex-col justify-start sm:justify-center max-w-xl mx-auto w-full">
             {/* Exercise Category & Prompt */}
             <div className="space-y-3 mb-6">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">
-                  {lesson.module_name} · Exercise {currentExerciseIndex + 1} of {lesson.exercises.length}
+                  {currentLesson.module_name} · Exercise {currentExerciseIndex + 1} of {currentLesson.exercises.length}
                 </span>
                 <span className="text-xs font-medium text-stone-400 capitalize">
                   {currentExercise.exercise_type.replace('_', ' ')}
@@ -487,45 +496,54 @@ export const LessonModal: React.FC<LessonModalProps> = ({
               </div>
             )}
           </div>
-        ) : (
-          /* Lesson Complete Celebration Screen */
+        ) : isFinalModule ? (
+          /* ALL MODULES FINISHED CELEBRATION SCREEN WITH CONFETTI */
           <div className="flex-1 overflow-y-auto p-6 sm:p-10 flex flex-col items-center justify-center text-center space-y-6">
-            <div className="w-20 h-20 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center animate-bounce shadow-md">
-              <Award className="w-10 h-10" />
-            </div>
-
-            <div className="space-y-1">
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
-                Lesson Complete!
+            <div className="relative">
+              <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-amber-400 to-yellow-300 text-amber-950 flex items-center justify-center shadow-xl animate-bounce">
+                <Trophy className="w-12 h-12 text-amber-950" />
+              </div>
+              <span className="absolute -top-2 -right-2 bg-emerald-600 text-white p-2 rounded-full shadow-lg">
+                <Sparkles className="w-4 h-4" />
               </span>
-              <h2 className="text-3xl font-extrabold text-stone-900 font-display">
-                Sosọñọ! Outstanding Work!
-              </h2>
-              <p className="text-xs sm:text-sm text-stone-600 max-w-md">
-                You took another vital step in keeping our indigenous Nigerian mother tongue vibrant and thriving.
-              </p>
             </div>
 
-            {/* Results Metric Strip */}
-            <div className="grid grid-cols-3 gap-4 w-full max-w-sm">
-              <div className="p-4 bg-white rounded-2xl border border-stone-200/90 shadow-xs">
-                <span className="text-xs text-stone-400 font-medium">XP Earned</span>
-                <p className="text-xl font-extrabold text-amber-600 tabular-nums">
-                  +{stats.earnedXp || lesson.xp_reward}
+            <div className="space-y-2 max-w-lg">
+              <div className="inline-flex items-center gap-1.5 px-3.5 py-1 bg-amber-100 text-amber-900 rounded-full text-xs font-extrabold uppercase tracking-wider border border-amber-300">
+                <PartyPopper className="w-3.5 h-3.5" />
+                <span>All {trackLessons.length} Modules Mastered!</span>
+              </div>
+              <h2 className="text-2xl sm:text-4xl font-extrabold text-stone-900 font-display leading-tight">
+                Sosọñọ Akamba! Course Complete!
+              </h2>
+              {/* Exact user requested notice verbatim */}
+              <div className="bg-amber-50 border-2 border-amber-300/80 rounded-2xl p-4 sm:p-5 text-amber-950 shadow-sm mt-3">
+                <p className="text-sm sm:text-base font-bold leading-relaxed">
+                  We&apos;re working on bringing more modules for you! Stay Tuned and Invite your family and loved ones
+                </p>
+              </div>
+            </div>
+
+            {/* Final Results Metric Strip */}
+            <div className="grid grid-cols-3 gap-3 sm:gap-4 w-full max-w-sm">
+              <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-stone-200/90 shadow-xs">
+                <span className="text-[11px] text-stone-400 font-medium">XP Earned</span>
+                <p className="text-lg sm:text-xl font-extrabold text-amber-600 tabular-nums">
+                  +{stats.earnedXp || currentLesson.xp_reward}
                 </p>
               </div>
 
-              <div className="p-4 bg-white rounded-2xl border border-stone-200/90 shadow-xs">
-                <span className="text-xs text-stone-400 font-medium">Accuracy</span>
-                <p className="text-xl font-extrabold text-emerald-700 tabular-nums">
+              <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-stone-200/90 shadow-xs">
+                <span className="text-[11px] text-stone-400 font-medium">Accuracy</span>
+                <p className="text-lg sm:text-xl font-extrabold text-emerald-700 tabular-nums">
                   {Math.round((stats.correctCount / Math.max(stats.totalAnswered, 1)) * 100)}%
                 </p>
               </div>
 
-              <div className="p-4 bg-white rounded-2xl border border-stone-200/90 shadow-xs">
-                <span className="text-xs text-stone-400 font-medium">Questions</span>
-                <p className="text-xl font-extrabold text-stone-800 tabular-nums">
-                  {lesson.exercises.length}
+              <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-stone-200/90 shadow-xs">
+                <span className="text-[11px] text-stone-400 font-medium">Course</span>
+                <p className="text-lg sm:text-xl font-extrabold text-emerald-700 tabular-nums">
+                  100%
                 </p>
               </div>
             </div>
@@ -545,15 +563,116 @@ export const LessonModal: React.FC<LessonModalProps> = ({
               </div>
             )}
 
-            <button
-              onClick={() => {
-                onLessonCompleted(stats.earnedXp || lesson.xp_reward, stats.newAchievements);
-                onClose();
-              }}
-              className="w-full max-w-sm py-3.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm rounded-2xl transition-all shadow-md cursor-pointer"
-            >
-              Continue Learning
-            </button>
+            {/* Action Buttons */}
+            <div className="w-full max-w-sm space-y-2.5">
+              <button
+                onClick={() => {
+                  triggerCourseCompletionFireworks();
+                  playLessonCompleteFanfare();
+                }}
+                className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold text-sm rounded-2xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <PartyPopper className="w-4 h-4" />
+                <span>Celebrate Again 🎉</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  onLessonCompleted(stats.earnedXp || currentLesson.xp_reward, stats.newAchievements);
+                  onClose();
+                }}
+                className="w-full py-3 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-sm rounded-2xl transition-all cursor-pointer"
+              >
+                Return to Dashboard &amp; Pathway
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* STANDARD MODULE COMPLETE CELEBRATION SCREEN WITH NEXT MODULE ACTION */
+          <div className="flex-1 overflow-y-auto p-6 sm:p-10 flex flex-col items-center justify-center text-center space-y-6">
+            <div className="w-20 h-20 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shadow-md animate-bounce">
+              <CheckCircle2 className="w-10 h-10" />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
+                Module {currentLesson.module_number} Complete!
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-stone-900 font-display">
+                Sosọñọ! Outstanding Work!
+              </h2>
+              <p className="text-xs sm:text-sm text-stone-600 max-w-md">
+                You have successfully unlocked{' '}
+                <span className="font-bold text-emerald-800">
+                  Module {nextLesson?.module_number}: {nextLesson?.title}
+                </span>
+                . Ready to proceed?
+              </p>
+            </div>
+
+            {/* Results Metric Strip */}
+            <div className="grid grid-cols-3 gap-4 w-full max-w-sm">
+              <div className="p-4 bg-white rounded-2xl border border-stone-200/90 shadow-xs">
+                <span className="text-xs text-stone-400 font-medium">XP Earned</span>
+                <p className="text-xl font-extrabold text-amber-600 tabular-nums">
+                  +{stats.earnedXp || currentLesson.xp_reward}
+                </p>
+              </div>
+
+              <div className="p-4 bg-white rounded-2xl border border-stone-200/90 shadow-xs">
+                <span className="text-xs text-stone-400 font-medium">Accuracy</span>
+                <p className="text-xl font-extrabold text-emerald-700 tabular-nums">
+                  {Math.round((stats.correctCount / Math.max(stats.totalAnswered, 1)) * 100)}%
+                </p>
+              </div>
+
+              <div className="p-4 bg-white rounded-2xl border border-stone-200/90 shadow-xs">
+                <span className="text-xs text-stone-400 font-medium">Questions</span>
+                <p className="text-xl font-extrabold text-stone-800 tabular-nums">
+                  {currentLesson.exercises.length}
+                </p>
+              </div>
+            </div>
+
+            {/* New Achievements notification */}
+            {stats.newAchievements.length > 0 && (
+              <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 w-full max-w-sm text-left">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900 mb-1">
+                  <Sparkles className="w-4 h-4 text-amber-600" />
+                  <span>Achievement Unlocked!</span>
+                </div>
+                {stats.newAchievements.map((achTitle, i) => (
+                  <p key={i} className="text-xs text-amber-800 font-semibold">
+                    🏆 {achTitle}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {/* Action Buttons: Proceed to Next Module OR Back to Pathway */}
+            <div className="w-full max-w-sm space-y-2.5">
+              {nextLesson && (
+                <button
+                  onClick={handleProceedToNextModule}
+                  className="w-full py-3.5 px-4 bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold text-sm rounded-2xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  <span>
+                    Proceed to Module {nextLesson.module_number}: {nextLesson.title}
+                  </span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  onLessonCompleted(stats.earnedXp || currentLesson.xp_reward, stats.newAchievements);
+                  onClose();
+                }}
+                className="w-full py-3 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs sm:text-sm rounded-2xl transition-all cursor-pointer"
+              >
+                Back to Curriculum Pathway
+              </button>
+            </div>
           </div>
         )}
 

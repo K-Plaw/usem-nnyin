@@ -15,7 +15,57 @@ const __dirname = path.dirname(__filename);
 
 const PORT = 3000;
 const app = express();
+
+// Verified and authorized domains for backend API access (including production Vercel domain)
+const ALLOWED_ORIGINS = [
+  'https://usem-nnyin.vercel.app',
+  'http://usem-nnyin.vercel.app',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:5173',
+  process.env.APP_URL,
+].filter(Boolean) as string[];
+
+// CORS and Preflight middleware for cross-origin domain authorization
+app.use((req: Request, res: Response, next) => {
+  const origin = req.headers.origin;
+
+  const isAllowedOrigin =
+    !origin ||
+    ALLOWED_ORIGINS.includes(origin) ||
+    /^https:\/\/([a-zA-Z0-9-]+\.)?vercel\.app$/.test(origin) ||
+    /^https?:\/\/localhost(:\d+)?$/.test(origin);
+
+  if (isAllowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204);
+    return;
+  }
+
+  next();
+});
+
 app.use(express.json());
+
+// Health & Domain verification endpoint
+app.get('/api/health', (_req: Request, res: Response) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    verified_domains: [
+      'https://usem-nnyin.vercel.app',
+      'http://usem-nnyin.vercel.app',
+      '*.vercel.app',
+      process.env.APP_URL || 'development',
+    ],
+  });
+});
 
 // Initialize GoogleGenAI server client as per guidelines
 const geminiApiKey = process.env.GEMINI_API_KEY || '';
@@ -380,10 +430,11 @@ app.get('/api/dictionary', (req: Request, res: Response): void => {
   });
 });
 
-// 3. Lessons & Progress Endpoints (Authenticated)
+// 3. Lessons & Progress Endpoints (Authenticated & Guest Support)
 app.get('/api/lessons', (req: Request, res: Response): void => {
   const user = getAuthenticatedUser(req);
   const lang = req.query.language as string;
+  const completedParam = req.query.completed_ids as string;
 
   let lessons = [...db.lessons];
   if (lang && (lang === 'ibibio' || lang === 'efik')) {
@@ -398,16 +449,36 @@ app.get('/api/lessons', (req: Request, res: Response): void => {
       .forEach((p) => progressMap.set(p.lesson_id, p));
   }
 
+  // Also include any client-passed completed_ids for immediate sync
+  if (completedParam) {
+    completedParam.split(',').forEach((cid) => {
+      const trimmed = cid.trim();
+      if (trimmed && !progressMap.has(trimmed)) {
+        progressMap.set(trimmed, {
+          id: `client-${trimmed}`,
+          user_id: user?.id || 'guest',
+          lesson_id: trimmed,
+          completed: true,
+          score: 100,
+          xp_earned: 25,
+          completed_at: new Date().toISOString(),
+        });
+      }
+    });
+  }
+
   const enrichedLessons = lessons.map((lesson, index) => {
     const prog = progressMap.get(lesson.id);
+    const isCompleted = prog?.completed || false;
     const isFirst = index === 0;
     const prevLesson = index > 0 ? lessons[index - 1] : null;
-    const isUnlocked = isFirst || (prevLesson && progressMap.has(prevLesson.id));
+    const isPrevCompleted = prevLesson ? Boolean(progressMap.get(prevLesson.id)?.completed) : false;
+    const isUnlocked = isFirst || isPrevCompleted;
 
     return {
       ...lesson,
-      is_completed: prog?.completed || false,
-      score: prog?.score || 0,
+      is_completed: isCompleted,
+      score: prog?.score || (isCompleted ? 100 : 0),
       is_unlocked: Boolean(isUnlocked),
     };
   });
@@ -661,4 +732,8 @@ async function startServer() {
   });
 }
 
-startServer();
+if (process.env.VERCEL !== '1') {
+  startServer();
+}
+
+export default app;

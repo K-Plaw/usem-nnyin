@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Lesson, Achievement, LanguageCode } from '../types';
+import { apiUrl } from '../lib/api';
 import {
   Flame,
   Zap,
@@ -16,7 +17,12 @@ import {
   ChevronRight,
   TrendingUp,
   Compass,
+  PartyPopper,
 } from 'lucide-react';
+import { triggerCelebrationConfetti, triggerStreakRecordFanfare, triggerCourseCompletionFireworks } from '../utils/confetti';
+import { playLessonCompleteFanfare, playSuccessChime } from '../utils/audio';
+import { LESSONS_DATABASE } from '../data/seedData';
+import { getCompletedLessonIds, enrichLessonsWithProgress } from '../utils/progress';
 
 interface DashboardViewProps {
   onStartLesson: (lesson: Lesson) => void;
@@ -33,27 +39,75 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [lessons, setLessons] = useState<(Lesson & { is_completed?: boolean; is_unlocked?: boolean; score?: number })[]>([]);
   const [achievements, setAchievements] = useState<(Achievement & { is_unlocked: boolean })[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasAutoCelebrated, setHasAutoCelebrated] = useState(false);
+  const [isCelebrating, setIsCelebrating] = useState(false);
+
+  const handleCelebrateStreak = () => {
+    setIsCelebrating(true);
+    triggerStreakRecordFanfare();
+    playLessonCompleteFanfare();
+    setTimeout(() => setIsCelebrating(false), 2500);
+  };
+
+  useEffect(() => {
+    if (user && user.current_streak > 0 && !hasAutoCelebrated) {
+      const isRecord = user.current_streak >= (user.longest_streak || 1);
+      if (isRecord && user.current_streak >= 1) {
+        // Trigger celebration fanfare on dashboard load for maintaining streak or new record
+        const timer = setTimeout(() => {
+          triggerStreakRecordFanfare();
+          playSuccessChime();
+          setHasAutoCelebrated(true);
+        }, 600);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [user, hasAutoCelebrated]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      // 1. Fetch lessons
+      // 1. Retrieve all completed lesson IDs across Firestore + LocalStorage
+      const completedIds = await getCompletedLessonIds(user?.id);
+      const completedList = Array.from(completedIds).join(',');
+
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const [lessonsRes, achRes] = await Promise.all([
-        fetch(`/api/lessons?language=${activeLanguage}`, { headers }),
-        fetch('/api/achievements', { headers }),
-      ]);
+      let fetchedLessons: Lesson[] = [];
 
-      if (lessonsRes.ok) {
-        const lData = await lessonsRes.json();
-        setLessons(lData.lessons);
+      try {
+        const [lessonsRes, achRes] = await Promise.all([
+          fetch(
+            apiUrl(
+              `/api/lessons?language=${activeLanguage}${
+                completedList ? `&completed_ids=${encodeURIComponent(completedList)}` : ''
+              }`
+            ),
+            { headers }
+          ),
+          fetch(apiUrl('/api/achievements'), { headers }),
+        ]);
+
+        if (lessonsRes.ok) {
+          const lData = await lessonsRes.json();
+          fetchedLessons = lData.lessons;
+        }
+        if (achRes.ok) {
+          const aData = await achRes.json();
+          setAchievements(aData.achievements);
+        }
+      } catch (networkErr) {
+        console.warn('Network call fell back to local curriculum:', networkErr);
       }
-      if (achRes.ok) {
-        const aData = await achRes.json();
-        setAchievements(aData.achievements);
+
+      if (!fetchedLessons || fetchedLessons.length === 0) {
+        fetchedLessons = LESSONS_DATABASE.filter((l) => l.language === activeLanguage);
       }
+
+      // Ensure lessons are accurately enriched with verified completed IDs
+      const enriched = enrichLessonsWithProgress(fetchedLessons, completedIds);
+      setLessons(enriched);
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
@@ -63,10 +117,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   useEffect(() => {
     fetchData();
-  }, [activeLanguage, token]);
+
+    // Listen to real-time progress update event dispatched when any module is completed
+    const handleProgressUpdated = () => {
+      fetchData();
+    };
+
+    window.addEventListener('usem:progress-updated', handleProgressUpdated);
+    return () => {
+      window.removeEventListener('usem:progress-updated', handleProgressUpdated);
+    };
+  }, [activeLanguage, token, user?.id]);
 
   const completedCount = lessons.filter((l) => l.is_completed).length;
   const coursePercent = lessons.length > 0 ? Math.round((completedCount / lessons.length) * 100) : 0;
+  const isAllFinished = lessons.length > 0 && completedCount === lessons.length;
   const nextLesson = lessons.find((l) => !l.is_completed && l.is_unlocked) || lessons[0];
 
   const dailyGoalPercent = user
@@ -138,18 +203,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {/* Quick Continue Lesson Card */}
           <div className="bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-2xl w-full lg:w-80 space-y-3">
             <div className="flex items-center justify-between text-xs text-amber-200 font-semibold">
-              <span>Next Recommended</span>
-              <span className="uppercase">{nextLesson ? `Module ${nextLesson.module_number}` : ''}</span>
+              <span>{isAllFinished ? 'Track Status' : 'Next Recommended'}</span>
+              <span className="uppercase text-emerald-300">
+                {isAllFinished ? '100% Mastered' : nextLesson ? `Module ${nextLesson.module_number}` : ''}
+              </span>
             </div>
             <div>
               <h4 className="text-base font-bold text-white font-display line-clamp-1">
-                {nextLesson?.title || 'First Greetings'}
+                {isAllFinished ? 'All 7 Modules Completed! 🏆' : nextLesson?.title || 'First Greetings'}
               </h4>
               <p className="text-xs text-stone-200 italic line-clamp-1">
-                {nextLesson?.indigenous_title}
+                {isAllFinished ? 'Sosọñọ eti-eti! Heritage Scholar' : nextLesson?.indigenous_title}
               </p>
             </div>
-            {nextLesson && (
+            {isAllFinished ? (
+              <button
+                onClick={() => {
+                  triggerCourseCompletionFireworks();
+                  playLessonCompleteFanfare();
+                }}
+                className="w-full py-2.5 px-4 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-stone-900 font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <PartyPopper className="w-3.5 h-3.5" />
+                <span>Celebrate Completion 🎉</span>
+              </button>
+            ) : nextLesson ? (
               <button
                 onClick={() => {
                   if (user) {
@@ -163,18 +241,56 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <Play className="w-3.5 h-3.5 fill-current" />
                 <span>{user ? 'Start Next Lesson' : 'Sign in to Start'}</span>
               </button>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
 
+      {/* Streak Celebration Banner (When streak is active) */}
+      {user && user.current_streak > 0 && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/15 to-emerald-500/10 border border-amber-300/80 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+          <div className="flex items-center gap-3.5">
+            <div className={`w-12 h-12 rounded-2xl bg-amber-500 flex items-center justify-center text-white shadow-md transition-transform ${isCelebrating ? 'scale-115 rotate-6' : 'animate-bounce'}`}>
+              <Flame className="w-6 h-6 fill-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm sm:text-base font-bold text-stone-900">
+                  {user.current_streak >= (user.longest_streak || 1)
+                    ? `🔥 New All-Time Record: ${user.current_streak}-Day Streak!`
+                    : `🔥 ${user.current_streak}-Day Streak Maintained!`}
+                </h3>
+                <span className="text-[11px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">
+                  Keep it going!
+                </span>
+              </div>
+              <p className="text-xs text-stone-600 mt-0.5">
+                Sosongo! Your daily dedication preserves the Ibibio and Efik indigenous heritage.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleCelebrateStreak}
+            disabled={isCelebrating}
+            className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer hover:scale-105 active:scale-95"
+          >
+            <PartyPopper className={`w-4 h-4 ${isCelebrating ? 'animate-spin' : ''}`} />
+            <span>{isCelebrating ? 'Fanfare Playing! 🎉' : 'Celebrate Streak 🎉'}</span>
+          </button>
+        </div>
+      )}
+
       {/* Gamification Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Streak */}
-        <div className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs space-y-2">
+        <div
+          onClick={handleCelebrateStreak}
+          title="Click to celebrate your streak!"
+          className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-xs space-y-2 cursor-pointer hover:border-amber-400 hover:shadow-md transition-all group relative overflow-hidden"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-stone-500">Day Streak</span>
-            <Flame className="w-5 h-5 text-amber-500 fill-amber-500" />
+            <span className="text-xs font-semibold text-stone-500 group-hover:text-amber-700 transition-colors">Day Streak</span>
+            <Flame className="w-5 h-5 text-amber-500 fill-amber-500 group-hover:scale-110 transition-transform" />
           </div>
           <div>
             <span className="text-2xl sm:text-3xl font-extrabold text-stone-900 tabular-nums">
@@ -182,9 +298,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </span>
             <span className="text-xs text-stone-400 ml-1">days</span>
           </div>
-          <p className="text-[11px] text-stone-500">
-            Longest: <span className="font-bold tabular-nums text-stone-700">{user?.longest_streak || 0} days</span>
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] text-stone-500">
+              Longest: <span className="font-bold tabular-nums text-stone-700">{user?.longest_streak || 0} days</span>
+            </p>
+            <span className="text-[10px] text-amber-600 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+              Tap for 🎉
+            </span>
+          </div>
         </div>
 
         {/* Total XP */}
@@ -259,6 +380,44 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </p>
             </div>
           </div>
+
+          {/* All Modules Complete Grand Showcase Banner */}
+          {isAllFinished && (
+            <div className="bg-gradient-to-r from-amber-500/15 via-emerald-500/15 to-amber-500/15 border-2 border-amber-400/90 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-14 h-14 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-lg shrink-0 animate-bounce">
+                    <Trophy className="w-7 h-7" />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base sm:text-lg font-extrabold text-stone-900 font-display">
+                        🎉 All Modules Completed!
+                      </h3>
+                      <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+                        7 / 7 Mastered
+                      </span>
+                    </div>
+                    {/* Exact user requested message verbatim */}
+                    <p className="text-xs sm:text-sm text-stone-800 font-bold mt-1">
+                      We&apos;re working on bringing more modules for you! Stay Tuned and Invite your family and loved ones
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    triggerCourseCompletionFireworks();
+                    playLessonCompleteFanfare();
+                  }}
+                  className="w-full sm:w-auto px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold text-xs rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 shrink-0 hover:scale-105 active:scale-95"
+                >
+                  <PartyPopper className="w-4 h-4" />
+                  <span>Celebrate Again 🎉</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Lessons List */}
           <div className="space-y-4">

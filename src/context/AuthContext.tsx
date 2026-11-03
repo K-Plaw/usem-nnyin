@@ -19,6 +19,7 @@ import {
   getDoc,
   onSnapshot,
 } from 'firebase/firestore';
+import { apiUrl } from '../lib/api';
 
 interface AuthContextType {
   user: User | null;
@@ -107,7 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             await setDoc(userDocRef, initialUser);
             setUser(initialUser);
-            fetch('/api/auth/sync-user', {
+            fetch(apiUrl('/api/auth/sync-user'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ user: initialUser }),
@@ -115,7 +116,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } else {
             const loadedUser = snapshot.data() as User;
             setUser(loadedUser);
-            fetch('/api/auth/sync-user', {
+            fetch(apiUrl('/api/auth/sync-user'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ user: loadedUser }),
@@ -168,7 +169,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
     try {
-      const res = await fetch('/api/auth/me', {
+      const res = await fetch(apiUrl('/api/auth/me'), {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -239,7 +240,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password: string) => {
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(apiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -269,7 +270,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     proficiency_level: ProficiencyLevel;
   }) => {
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch(apiUrl('/api/auth/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -291,7 +292,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const guestLogin = async () => {
     try {
-      const res = await fetch('/api/auth/guest-login', {
+      const res = await fetch(apiUrl('/api/auth/guest-login'), {
         method: 'POST',
       });
       if (res.ok) {
@@ -351,7 +352,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (!token) return false;
     try {
-      const res = await fetch('/api/auth/update', {
+      const res = await fetch(apiUrl('/api/auth/update'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

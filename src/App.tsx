@@ -104,6 +104,7 @@ function AppContent() {
           lesson={activeLesson}
           onClose={() => setActiveLesson(null)}
           onLessonCompleted={handleLessonCompleted}
+          onStartNextLesson={handleStartLesson}
         />
       )}
 

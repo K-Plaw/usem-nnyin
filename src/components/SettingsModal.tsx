@@ -89,26 +89,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs">
-      <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 sm:p-8 shadow-2xl border border-stone-200 space-y-6 relative">
-        <button
-          onClick={onClose}
-          className="absolute top-5 right-5 text-stone-400 hover:text-stone-700 p-1 cursor-pointer"
-          aria-label="Close settings"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        <div className="space-y-1">
-          <h3 className="text-2xl font-extrabold text-stone-900 font-display">
-            Learning Goals &amp; Reminders
-          </h3>
-          <p className="text-xs text-stone-500">
-            Personalize your daily pace, primary language track, and practice alerts.
-          </p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-900/65 backdrop-blur-xs overscroll-contain">
+      <div className="bg-white rounded-3xl max-w-lg w-full max-h-[calc(100dvh-2rem)] sm:max-h-[min(88dvh,720px)] flex flex-col shadow-2xl border border-stone-200 relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        {/* Pinned top header */}
+        <div className="px-6 py-4.5 sm:px-8 border-b border-stone-100 flex items-center justify-between shrink-0 bg-white">
+          <div className="space-y-0.5 pr-3">
+            <h3 className="text-xl sm:text-2xl font-extrabold text-stone-900 font-display">
+              Goals &amp; Notifications
+            </h3>
+            <p className="text-xs text-stone-500">
+              Personalize your daily pace, primary language track, and practice alerts.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer shrink-0"
+            aria-label="Close settings"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        <form onSubmit={handleSave} className="space-y-6">
+        {/* Scrollable Form Body */}
+        <form
+          id="settings-form"
+          onSubmit={handleSave}
+          className="flex-1 overflow-y-auto overscroll-contain px-6 sm:px-8 py-5 space-y-6"
+        >
           {/* Daily XP Goal */}
           <div className="space-y-2">
             <label className="block text-xs font-bold text-stone-900 flex items-center gap-1.5">
@@ -263,32 +270,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             </div>
           </div>
 
-          <div className="pt-2 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 rounded-xl border border-stone-200 text-stone-700 font-bold text-xs hover:bg-stone-100 transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-6 py-2.5 bg-emerald-700 hover:bg-emerald-800 disabled:bg-stone-300 text-white font-bold text-xs rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-            >
-              {saving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : saveSuccess ? (
-                <>
-                  <Check className="w-4 h-4" />
-                  <span>Saved!</span>
-                </>
-              ) : (
-                <span>Save Preferences</span>
-              )}
-            </button>
-          </div>
         </form>
+
+        {/* Pinned bottom action bar */}
+        <div className="px-6 py-3.5 sm:px-8 border-t border-stone-100 shrink-0 bg-stone-50/80 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-stone-600 hover:text-stone-900 font-semibold text-xs rounded-xl hover:bg-stone-100 transition-all cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="settings-form"
+            disabled={saving}
+            className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 disabled:bg-stone-300 text-white font-bold text-xs rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Saving...</span>
+              </>
+            ) : saveSuccess ? (
+              <>
+                <Check className="w-3.5 h-3.5" />
+                <span>Saved!</span>
+              </>
+            ) : (
+              <span>Save Preferences</span>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
