@@ -152,13 +152,35 @@ export const DictionaryView: React.FC<DictionaryViewProps> = ({
     }
   };
 
+  const getPosLabel = (pos?: string) => {
+    if (!pos) return null;
+    switch (pos.toLowerCase()) {
+      case 'n': return 'Noun';
+      case 'tv': return 'Transitive Verb';
+      case 'iv': return 'Intransitive Verb';
+      case 'v': return 'Verb';
+      case 'aj':
+      case 'adj': return 'Adjective';
+      case 'adv': return 'Adverb';
+      case 'num': return 'Numeral';
+      case 'interj': return 'Interjection';
+      case 'ideo': return 'Ideophone';
+      case 'pron': return 'Pronoun';
+      case 'prep': return 'Preposition';
+      case 'conj': return 'Conjunction';
+      default: return pos;
+    }
+  };
+
   const categories = [
     { id: 'all', label: 'All Categories' },
     { id: 'greetings', label: 'Greetings' },
     { id: 'family', label: 'Family & Kinship' },
     { id: 'numbers', label: 'Numbers & Counting' },
-    { id: 'food', label: 'Food & Objects' },
-    { id: 'expressions', label: 'Common Expressions' },
+    { id: 'food', label: 'Food & Botany' },
+    { id: 'expressions', label: 'Expressions & Heritage' },
+    { id: 'verbs', label: 'Actions & Verbs' },
+    { id: 'nature', label: 'Nature & Culture' },
     { id: 'questions', label: 'Questions' },
   ];
 
@@ -179,6 +201,40 @@ export const DictionaryView: React.FC<DictionaryViewProps> = ({
         <p className="text-xs sm:text-sm text-stone-600 max-w-2xl leading-relaxed">
           Search verified vocabulary with standardized orthography, tone markers, example sentences, and audio pronunciation.
         </p>
+      </div>
+
+      {/* Academic Citation & Dictionary Reference Card */}
+      <div className="bg-gradient-to-r from-emerald-950 via-stone-900 to-amber-950 text-white rounded-2xl p-5 sm:p-6 shadow-md border border-emerald-800/40 relative overflow-hidden">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1.5 max-w-2xl">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="px-2.5 py-0.5 bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 rounded-md text-[11px] font-bold uppercase tracking-wider">
+                Academic Standard
+              </span>
+              <span className="text-xs text-amber-200/90 font-medium">
+                DAAD · University of Uyo · Universität Bielefeld
+              </span>
+            </div>
+            <h2 className="text-base sm:text-lg font-bold font-display text-white">
+              Grounded in the Uyo Ibibio Dictionary (Urua, Ekpenyong, Gibbon 2004)
+            </h2>
+            <p className="text-xs text-stone-300 leading-relaxed">
+              Every lexical entry adheres to standard Essien orthography, International Phonetic Alphabet (IPA), SAMPA machine notations, Kaufman (1985) tone formulas (H, L, D, F, R), and verified grammatical classes.
+            </p>
+          </div>
+
+          <div className="shrink-0 flex items-center gap-2">
+            <a
+              href="/assets/aistudio/2004_Gibbon_Urua_Ekpenyong_Ibibio_Dictionary01_f72b4bb1.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm hover:shadow-md cursor-pointer"
+            >
+              <BookOpen className="w-4 h-4" />
+              <span>View Academic Dictionary PDF</span>
+            </a>
+          </div>
+        </div>
       </div>
 
       {/* Main Search Controls */}
@@ -372,93 +428,127 @@ export const DictionaryView: React.FC<DictionaryViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {entries.map((entry) => {
             const isPlaying = playingWordId === entry.id;
+            const posFull = getPosLabel(entry.part_of_speech);
 
             return (
               <div
                 key={entry.id}
-                className="bg-white rounded-2xl p-5 border border-stone-200/80 shadow-xs hover:border-emerald-600/40 hover:shadow-md transition-all space-y-4"
+                className="bg-white rounded-2xl p-5 border border-stone-200/80 shadow-xs hover:border-emerald-600/40 hover:shadow-md transition-all flex flex-col justify-between space-y-4"
               >
-                {/* Top row: Language badge, Category, and Verified seal */}
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                        entry.language === 'ibibio'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-amber-100 text-amber-800'
+                <div className="space-y-3.5">
+                  {/* Top row: Language badge, Category, POS, and Verified seal */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span
+                        className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                          entry.language === 'ibibio'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        {entry.language === 'ibibio' ? 'Ibibio' : 'Efik'}
+                      </span>
+                      <span className="text-[11px] text-stone-500 capitalize bg-stone-100 px-2 py-0.5 rounded-md font-medium">
+                        {entry.category}
+                      </span>
+                      {entry.part_of_speech && (
+                        <span
+                          className="text-[10px] text-stone-600 bg-stone-100/90 border border-stone-200/80 px-1.5 py-0.5 rounded font-mono font-bold"
+                          title={posFull || entry.part_of_speech}
+                        >
+                          {entry.part_of_speech} ({posFull || entry.part_of_speech})
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Verified Record</span>
+                    </div>
+                  </div>
+
+                  {/* Main Word & Pronunciation Play button */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <h3 className="text-2xl font-extrabold text-stone-900 tracking-tight font-display">
+                        {entry.word}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                        <span className="text-stone-500 font-mono">
+                          /{entry.phonetic}/
+                        </span>
+                        {entry.ipa && (
+                          <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200/60 rounded text-[11px] font-mono font-medium">
+                            IPA: {entry.ipa}
+                          </span>
+                        )}
+                        {entry.tone_pattern && (
+                          <span className="px-1.5 py-0.5 bg-amber-50 text-amber-800 border border-amber-200/60 rounded text-[11px] font-mono font-bold">
+                            Tone: {entry.tone_pattern}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Audio Button */}
+                    <button
+                      onClick={() => handlePlayAudio(entry)}
+                      className={`p-2.5 rounded-xl border transition-all cursor-pointer shrink-0 ${
+                        isPlaying
+                          ? 'bg-emerald-700 text-white border-emerald-700 ring-2 ring-emerald-300'
+                          : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
                       }`}
+                      title="Play indigenous pronunciation"
+                      aria-label={`Play pronunciation for ${entry.word}`}
                     >
-                      {entry.language === 'ibibio' ? 'Ibibio' : 'Efik'}
-                    </span>
-                    <span className="text-xs text-stone-400 capitalize">{entry.category}</span>
+                      <Volume2 className={`w-4 h-4 ${isPlaying ? 'animate-pulse' : ''}`} />
+                    </button>
                   </div>
 
-                  <div className="flex items-center gap-1 text-[11px] font-medium text-emerald-700">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Verified Entry</span>
+                  {/* Translation & Definition */}
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-stone-900">
+                      {entry.translation}
+                    </p>
+                    <p className="text-xs text-stone-600 leading-relaxed">
+                      {entry.definition}
+                    </p>
+                    {entry.variants && (
+                      <p className="text-[11px] text-stone-500 italic">
+                        {entry.variants}
+                      </p>
+                    )}
                   </div>
-                </div>
 
-                {/* Main Word & Pronunciation Play button */}
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-2xl font-extrabold text-stone-900 tracking-tight font-display">
-                      {entry.word}
-                    </h3>
-                    <p className="text-xs text-stone-500 font-mono mt-0.5">
-                      /{entry.phonetic}/
+                  {/* Example sentence with interpretation */}
+                  <div className="p-3 bg-stone-50 rounded-xl border border-stone-100 space-y-1 text-xs">
+                    <div className="flex items-center justify-between text-[11px] text-stone-400">
+                      <span>Example Usage</span>
+                      <span>Tones: {entry.tone_notes}</span>
+                    </div>
+                    <p className="font-semibold text-emerald-900">
+                      &quot;{entry.example_sentence}&quot;
+                    </p>
+                    <p className="text-stone-500 italic">
+                      &quot;{entry.example_translation}&quot;
                     </p>
                   </div>
-
-                  {/* Audio Button */}
-                  <button
-                    onClick={() => handlePlayAudio(entry)}
-                    className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
-                      isPlaying
-                        ? 'bg-emerald-700 text-white border-emerald-700 ring-2 ring-emerald-300'
-                        : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
-                    }`}
-                    title="Play indigenous pronunciation"
-                    aria-label={`Play pronunciation for ${entry.word}`}
-                  >
-                    <Volume2 className={`w-4 h-4 ${isPlaying ? 'animate-pulse' : ''}`} />
-                  </button>
                 </div>
 
-                {/* Translation & Definition */}
-                <div className="space-y-1">
-                  <p className="text-sm font-bold text-stone-900">
-                    {entry.translation}
-                  </p>
-                  <p className="text-xs text-stone-600 leading-relaxed">
-                    {entry.definition}
-                  </p>
-                </div>
-
-                {/* Example sentence with interpretation */}
-                <div className="p-3 bg-stone-50 rounded-xl border border-stone-100 space-y-1 text-xs">
-                  <div className="flex items-center justify-between text-[11px] text-stone-400">
-                    <span>Example Usage</span>
-                    <span>Tones: {entry.tone_notes}</span>
+                {/* Footer: Citation Source & AI Linguistic Analysis Trigger */}
+                <div className="pt-2 border-t border-stone-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-[10px] text-stone-500 truncate" title={entry.source || 'Uyo Ibibio Dictionary (Urua, Ekpenyong, Gibbon 2004)'}>
+                    <BookOpen className="w-3 h-3 text-emerald-700 shrink-0" />
+                    <span className="truncate">{entry.source || 'Uyo Ibibio Dictionary (2004)'}</span>
                   </div>
-                  <p className="font-semibold text-emerald-900">
-                    &quot;{entry.example_sentence}&quot;
-                  </p>
-                  <p className="text-stone-500 italic">
-                    &quot;{entry.example_translation}&quot;
-                  </p>
-                </div>
 
-                {/* AI Linguistic Analysis Trigger */}
-                <div className="pt-1 flex items-center justify-between">
                   <button
                     onClick={() => handleRequestAiExplanation(entry)}
-                    className="text-xs font-semibold text-stone-600 hover:text-emerald-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="text-xs font-semibold text-stone-600 hover:text-emerald-700 flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Linguistic Context &amp; Dialect Notes</span>
+                    <span>Linguistic Context</span>
                   </button>
-                  <span className="text-[10px] text-stone-400">Lower Cross River Dialect</span>
                 </div>
               </div>
             );

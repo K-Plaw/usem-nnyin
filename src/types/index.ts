@@ -35,6 +35,12 @@ export interface DictionaryEntry {
   example_sentence: string;
   example_translation: string;
   tone_notes: string;
+  ipa?: string;
+  sampa?: string;
+  tone_pattern?: string; // Tone formula from Uyo-Bielefeld lexicon, e.g. HH, LL, HHL, LHL, HDH
+  part_of_speech?: string; // Essien / Kaufman POS, e.g. n, iv, tv, aj, adv, num, interj, ideo
+  source?: string; // Citation e.g. "Uyo Ibibio Dictionary (Urua, Ekpenyong, Gibbon 2004)"
+  variants?: string;
   pronunciation_url?: string;
   verification_status: 'verified' | 'community_reviewed' | 'unverified';
 }

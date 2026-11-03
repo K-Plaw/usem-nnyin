@@ -413,14 +413,18 @@ app.get('/api/dictionary', (req: Request, res: Response): void => {
       const matchTranslation = entry.translation.toLowerCase().includes(search);
       const matchDef = entry.definition.toLowerCase().includes(search);
       const matchPhonetic = entry.phonetic.toLowerCase().includes(search);
+      const matchIpa = entry.ipa?.toLowerCase().includes(search);
+      const matchSampa = entry.sampa?.toLowerCase().includes(search);
+      const matchTone = entry.tone_pattern?.toLowerCase().includes(search);
+      const matchPos = entry.part_of_speech?.toLowerCase() === search;
 
       if (direction === 'indigenous_to_en') {
-        return matchWord || matchPhonetic;
+        return matchWord || matchPhonetic || matchIpa || matchSampa;
       }
       if (direction === 'en_to_indigenous') {
         return matchTranslation || matchDef;
       }
-      return matchWord || matchTranslation || matchDef || matchPhonetic;
+      return matchWord || matchTranslation || matchDef || matchPhonetic || matchIpa || matchSampa || matchTone || matchPos;
     });
   }
 
@@ -670,12 +674,13 @@ Return a JSON object conforming strictly to the requested schema.`;
       model: 'gemini-3.8-flash',
       contents: prompt,
       config: {
-        systemInstruction: `You are a respectful linguistic scholar of Nigerian indigenous languages, specifically Ibibio (Akwa Ibom State) and Efik (Cross River State).
+        systemInstruction: `You are a respectful linguistic scholar of Nigerian indigenous languages, specifically Ibibio (Akwa Ibom State) and Efik (Cross River State), grounded in the academic authoritative lexicography of the Uyo Ibibio Dictionary (Eno-Abasi Urua, Moses Ekpenyong, Dafydd Gibbon 2004) and Elaine Kaufman (1985).
 CRITICAL RULES:
-1. Distinguish Ibibio from Efik clearly. Mention cognates, tonal nuances, and orthographic conventions.
-2. Never present speculative information as absolute truth.
-3. Keep descriptions concise, culturally enriching, and educational.
-4. Always emphasize that this output is an AI-assisted linguistic analysis.`,
+1. Ground tone patterns (H, L, D, F, R) and Essien orthography in the Uyo-Bielefeld lexicon standards.
+2. Distinguish Ibibio from Efik clearly. Highlight cognates, tonal shifts, and grammatical classes (n, tv, iv, aj, num, interj).
+3. Never present speculative information as absolute truth.
+4. Keep descriptions concise, culturally enriching, and educational.
+5. Always cite or harmonize with the Uyo Ibibio Dictionary standard when discussing Ibibio morphology and tone.`,
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
