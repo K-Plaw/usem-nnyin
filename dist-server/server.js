@@ -1272,7 +1272,33 @@ function getAuthenticatedUser(req) {
   if (!authHeader) return null;
   const token = authHeader.replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
-  const user = db.users.find((u) => u.id === token);
+  let user = db.users.find((u) => u.id === token);
+  if (!user && token.length > 5) {
+    const todayStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+    user = {
+      id: token,
+      display_name: "Learner",
+      email: "",
+      selected_language: "ibibio",
+      proficiency_level: "beginner",
+      total_xp: 0,
+      current_streak: 0,
+      longest_streak: 0,
+      daily_goal: 50,
+      daily_xp_today: 0,
+      last_activity_date: "",
+      activity_dates: [],
+      notification_preferences: {
+        daily_reminder: true,
+        reminder_time: "19:00",
+        streak_freeze_alerts: true,
+        browser_notifications: false
+      },
+      created_at: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    db.users.push(user);
+    saveDatabase();
+  }
   return user || null;
 }
 app.post("/api/auth/register", (req, res) => {
@@ -1338,6 +1364,49 @@ app.post("/api/auth/guest-login", (_req, res) => {
     user: demoUser,
     token: demoUser.id
   });
+});
+app.post("/api/auth/sync-user", (req, res) => {
+  const incomingUser = req.body.user;
+  if (!incomingUser || !incomingUser.id) {
+    res.status(400).json({ error: "User id is required" });
+    return;
+  }
+  let user = db.users.find((u) => u.id === incomingUser.id);
+  const todayStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+  if (!user) {
+    user = {
+      id: incomingUser.id,
+      display_name: incomingUser.display_name || "Learner",
+      email: incomingUser.email || "",
+      selected_language: incomingUser.selected_language || "ibibio",
+      proficiency_level: incomingUser.proficiency_level || "beginner",
+      total_xp: incomingUser.total_xp || 0,
+      current_streak: incomingUser.current_streak || 0,
+      longest_streak: incomingUser.longest_streak || 0,
+      daily_goal: incomingUser.daily_goal || 50,
+      daily_xp_today: incomingUser.daily_xp_today || 0,
+      last_activity_date: incomingUser.last_activity_date || todayStr,
+      activity_dates: incomingUser.activity_dates || [todayStr],
+      notification_preferences: incomingUser.notification_preferences || {
+        daily_reminder: true,
+        reminder_time: "19:00",
+        streak_freeze_alerts: true,
+        browser_notifications: false
+      },
+      created_at: incomingUser.created_at || (/* @__PURE__ */ new Date()).toISOString()
+    };
+    db.users.push(user);
+  } else {
+    if (incomingUser.display_name) user.display_name = incomingUser.display_name;
+    if (incomingUser.email) user.email = incomingUser.email;
+    if (incomingUser.selected_language) user.selected_language = incomingUser.selected_language;
+    if (incomingUser.proficiency_level) user.proficiency_level = incomingUser.proficiency_level;
+    if (typeof incomingUser.total_xp === "number") {
+      user.total_xp = Math.max(user.total_xp, incomingUser.total_xp);
+    }
+  }
+  saveDatabase();
+  res.json({ user });
 });
 app.get("/api/auth/me", (req, res) => {
   const user = getAuthenticatedUser(req);

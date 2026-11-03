@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Lesson, Exercise } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { db, auth } from '../lib/firebase';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import {
   playIndigenousTone,
   playSuccessChime,
@@ -32,7 +34,7 @@ export const LessonModal: React.FC<LessonModalProps> = ({
   onClose,
   onLessonCompleted,
 }) => {
-  const { token, refreshUser } = useAuth();
+  const { token, refreshUser, setUser } = useAuth();
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState<Record<number, any>>({});
   const [feedbackStatus, setFeedbackStatus] = useState<'idle' | 'correct' | 'incorrect'>('idle');
@@ -175,8 +177,85 @@ export const LessonModal: React.FC<LessonModalProps> = ({
     } else {
       // Completed all questions in the lesson
       const finalAccuracy = Math.round((stats.correctCount / Math.max(stats.totalAnswered, 1)) * 100);
+      const earnedXp = Math.max(Math.round((lesson.xp_reward * Math.min(finalAccuracy, 100)) / 100), 10);
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      // Optimistically increment state immediately so dashboard updates in real-time
+      setUser((prev) => {
+        if (!prev) return null;
+        const newTotal = (prev.total_xp || 0) + earnedXp;
+        const newDaily = (prev.last_activity_date === todayStr ? (prev.daily_xp_today || 0) : 0) + earnedXp;
+        let newStreak = prev.current_streak || 0;
+        if (!prev.last_activity_date) {
+          newStreak = 1;
+        } else if (prev.last_activity_date !== todayStr) {
+          const diff = Math.round((new Date(todayStr).getTime() - new Date(prev.last_activity_date).getTime()) / 86400000);
+          newStreak = diff === 1 ? newStreak + 1 : 1;
+        }
+        return {
+          ...prev,
+          total_xp: newTotal,
+          daily_xp_today: newDaily,
+          current_streak: newStreak,
+          longest_streak: Math.max(prev.longest_streak || 0, newStreak),
+          last_activity_date: todayStr,
+        };
+      });
 
       try {
+        // 1. Sync to Firebase Cloud Firestore for cross-device persistence
+        if (auth.currentUser) {
+          const userDocRef = doc(db, 'users', auth.currentUser.uid);
+          const userSnap = await getDoc(userDocRef);
+
+          let firestoreTotalXp = earnedXp;
+          let firestoreDailyXp = earnedXp;
+          let firestoreStreak = 1;
+          let firestoreLongest = 1;
+
+          if (userSnap.exists()) {
+            const prevData = userSnap.data() as any;
+            firestoreTotalXp = (prevData.total_xp || 0) + earnedXp;
+            firestoreDailyXp = (prevData.last_activity_date === todayStr ? (prevData.daily_xp_today || 0) : 0) + earnedXp;
+            firestoreStreak = prevData.current_streak || 0;
+            if (!prevData.last_activity_date) {
+              firestoreStreak = 1;
+            } else if (prevData.last_activity_date !== todayStr) {
+              const diff = Math.round((new Date(todayStr).getTime() - new Date(prevData.last_activity_date).getTime()) / 86400000);
+              firestoreStreak = diff === 1 ? firestoreStreak + 1 : 1;
+            }
+            firestoreLongest = Math.max(prevData.longest_streak || 0, firestoreStreak);
+          }
+
+          // Update parent user document in Firestore
+          await setDoc(
+            userDocRef,
+            {
+              total_xp: firestoreTotalXp,
+              daily_xp_today: firestoreDailyXp,
+              current_streak: firestoreStreak,
+              longest_streak: firestoreLongest,
+              last_activity_date: todayStr,
+            },
+            { merge: true }
+          );
+
+          // Update lesson progress subcollection in Firestore
+          const progressDocRef = doc(db, 'users', auth.currentUser.uid, 'progress', lesson.id);
+          await setDoc(
+            progressDocRef,
+            {
+              lesson_id: lesson.id,
+              completed: true,
+              score: finalAccuracy,
+              xp_earned: earnedXp,
+              completed_at: new Date().toISOString(),
+            },
+            { merge: true }
+          );
+        }
+
+        // 2. Sync to Backend Express Database (data/db.json)
         if (token) {
           const res = await fetch('/api/lessons/complete', {
             method: 'POST',
@@ -193,14 +272,16 @@ export const LessonModal: React.FC<LessonModalProps> = ({
             const data = await res.json();
             setStats((prev) => ({
               ...prev,
-              earnedXp: data.earned_xp,
+              earnedXp: data.earned_xp || earnedXp,
               newAchievements: data.new_achievements || [],
             }));
-            await refreshUser();
+            if (data.user) {
+              setUser(data.user);
+            }
           }
         }
       } catch (err) {
-        console.error('Failed to save completion:', err);
+        console.error('Failed to save completion to database:', err);
       }
 
       playLessonCompleteFanfare();

@@ -8,7 +8,7 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
-  const { login, register, guestLogin } = useAuth();
+  const { login, register, guestLogin, signInWithGoogle } = useAuth();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
 
   // Form fields
@@ -76,8 +76,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
 
         {/* Brand header */}
         <div className="space-y-1">
-          <div className="w-8 h-8 rounded-lg bg-emerald-700 flex items-center justify-center text-amber-200 font-bold text-sm mb-2">
-            U
+          <div className="flex items-center justify-between">
+            <div className="w-8 h-8 rounded-lg bg-emerald-700 flex items-center justify-center text-amber-200 font-bold text-sm mb-2">
+              U
+            </div>
+            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+              <span>●</span> Firebase Firestore Active
+            </span>
           </div>
           <h3 className="text-2xl font-extrabold text-stone-900 font-display">
             {mode === 'signin' ? 'Welcome Back' : 'Start Your Language Journey'}
@@ -87,6 +92,55 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
               ? 'Sign in to access your lessons, track streaks, and earn XP.'
               : 'Create your account to preserve indigenous heritage.'}
           </p>
+        </div>
+
+        {/* 1-Click Google Firebase Sign In */}
+        <button
+          type="button"
+          disabled={isLoading}
+          onClick={async () => {
+            if (isLoading) return;
+            setIsLoading(true);
+            setErrorMsg(null);
+            const res = await signInWithGoogle();
+            setIsLoading(false);
+            if (res.success) {
+              onClose();
+            } else if (!res.cancelled && res.error) {
+              setErrorMsg(res.error);
+            }
+          }}
+          className="w-full py-2.5 px-4 bg-white hover:bg-stone-50 disabled:bg-stone-100 disabled:opacity-70 border border-stone-300 text-stone-800 font-bold text-xs rounded-xl transition-all shadow-xs flex items-center justify-center gap-2.5 cursor-pointer disabled:cursor-not-allowed"
+        >
+          {isLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin text-stone-600" />
+          ) : (
+            <svg className="w-4 h-4" viewBox="0 0 24 24">
+              <path
+                fill="#4285F4"
+                d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.9c2.28-2.1 3.645-5.2 3.645-9.15z"
+              />
+              <path
+                fill="#34A853"
+                d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.9-3.05c-1.08.72-2.45 1.16-4.03 1.16-3.1 0-5.74-2.1-6.68-4.93H1.26v3.13C3.25 21.3 7.31 24 12 24z"
+              />
+              <path
+                fill="#FBBC05"
+                d="M5.32 14.27c-.24-.72-.38-1.49-.38-2.27s.14-1.55.38-2.27V6.6H1.26C.46 8.22 0 10.05 0 12s.46 3.78 1.26 5.4l4.06-3.13z"
+              />
+              <path
+                fill="#EA4335"
+                d="M12 4.77c1.77 0 3.35.61 4.6 1.8l3.43-3.43C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.26 6.6l4.06 3.13c.94-2.83 3.58-4.96 6.68-4.96z"
+              />
+            </svg>
+          )}
+          <span>{isLoading ? 'Connecting to Google...' : 'Continue with Google (Firebase)'}</span>
+        </button>
+
+        <div className="flex items-center gap-2 my-2 text-stone-300">
+          <div className="h-px bg-stone-200 flex-1" />
+          <span className="text-[11px] text-stone-400 font-medium">or continue with email</span>
+          <div className="h-px bg-stone-200 flex-1" />
         </div>
 
         {/* Tab switch */}

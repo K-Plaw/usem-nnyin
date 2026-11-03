@@ -79,13 +79,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="bg-gradient-to-r from-emerald-800 to-teal-900 rounded-3xl p-6 sm:p-8 text-white shadow-md relative overflow-hidden">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
           <div className="space-y-2 max-w-xl">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-amber-300">
                 {activeLanguage === 'ibibio' ? 'Ibibio Learning Academy' : 'Efik Learning Academy'}
               </span>
               <span className="text-stone-300">·</span>
               <span className="text-xs text-stone-200 capitalize">
                 Level: {user?.proficiency_level || 'Beginner'}
+              </span>
+              <span className="text-stone-300">·</span>
+              <span className="text-[11px] font-semibold text-emerald-300 bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 rounded-full">
+                Firebase Firestore Connected
               </span>
             </div>
 

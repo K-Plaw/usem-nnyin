@@ -1,0 +1,152 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile containing progress, learning language, and streak information.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The user's unique identifier matching Firebase Auth UID."
+        },
+        "display_name": {
+          "type": "string",
+          "description": "Learner's name or username.",
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "description": "Learner's email address.",
+          "maxLength": 150
+        },
+        "selected_language": {
+          "type": "string",
+          "description": "Primary learning track.",
+          "enum": ["ibibio", "efik"]
+        },
+        "proficiency_level": {
+          "type": "string",
+          "description": "Current learning proficiency tier.",
+          "enum": ["beginner", "basic", "intermediate"]
+        },
+        "total_xp": {
+          "type": "integer",
+          "description": "Accumulated experience points."
+        },
+        "current_streak": {
+          "type": "integer",
+          "description": "Consecutive active learning days."
+        },
+        "longest_streak": {
+          "type": "integer",
+          "description": "Longest recorded consecutive day streak."
+        },
+        "daily_goal": {
+          "type": "integer",
+          "description": "Daily XP learning target."
+        },
+        "daily_xp_today": {
+          "type": "integer",
+          "description": "XP earned on current calendar date."
+        },
+        "last_activity_date": {
+          "type": "string",
+          "description": "Last recorded lesson date in YYYY-MM-DD format."
+        },
+        "created_at": {
+          "type": "string",
+          "description": "Account registration timestamp."
+        }
+      },
+      "required": ["id", "display_name", "selected_language", "total_xp", "current_streak"]
+    },
+    "UserProgress": {
+      "title": "UserProgress",
+      "description": "Completion record for a specific curriculum lesson.",
+      "type": "object",
+      "properties": {
+        "lesson_id": {
+          "type": "string",
+          "description": "Identifier of the completed lesson."
+        },
+        "completed": {
+          "type": "boolean",
+          "description": "Whether the lesson was completed."
+        },
+        "score": {
+          "type": "integer",
+          "description": "Accuracy score percentage."
+        },
+        "xp_earned": {
+          "type": "integer",
+          "description": "XP earned from this lesson attempt."
+        },
+        "completed_at": {
+          "type": "string",
+          "description": "Timestamp of completion."
+        }
+      },
+      "required": ["lesson_id", "completed", "score", "xp_earned"]
+    },
+    "UserAchievement": {
+      "title": "UserAchievement",
+      "description": "Unlocked badge record for an individual learner.",
+      "type": "object",
+      "properties": {
+        "achievement_id": {
+          "type": "string",
+          "description": "Identifier of the unlocked achievement."
+        },
+        "unlocked_at": {
+          "type": "string",
+          "description": "Timestamp of badge unlock."
+        }
+      },
+      "required": ["achievement_id", "unlocked_at"]
+    },
+    "DictionaryEntry": {
+      "title": "DictionaryEntry",
+      "description": "Verified indigenous dictionary word or phrase.",
+      "type": "object",
+      "properties": {
+        "word": {
+          "type": "string",
+          "description": "Indigenous word."
+        },
+        "language": {
+          "type": "string",
+          "enum": ["ibibio", "efik"]
+        },
+        "translation": {
+          "type": "string"
+        },
+        "definition": {
+          "type": "string"
+        },
+        "verification_status": {
+          "type": "string",
+          "enum": ["verified", "community_reviewed", "unverified"]
+        }
+      },
+      "required": ["word", "language", "translation", "definition", "verification_status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Learner account profiles."
+    },
+    "/users/{userId}/progress/{lessonId}": {
+      "schema": "UserProgress",
+      "description": "Completed lesson modules and scores for each user."
+    },
+    "/users/{userId}/achievements/{achievementId}": {
+      "schema": "UserAchievement",
+      "description": "Unlocked cultural badges and milestone achievements."
+    },
+    "/dictionary_entries/{entryId}": {
+      "schema": "DictionaryEntry",
+      "description": "Verified indigenous vocabulary database."
+    }
+  }
+}

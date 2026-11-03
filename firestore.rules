@@ -1,0 +1,96 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------
+    // Pillar 1 & 3: Global Denial Catch-All & Hardened Primitives
+    // -------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // -------------------------------------------------------------------
+    // Pillar 2: Validation Blueprints (Anti-Update-Gap)
+    // -------------------------------------------------------------------
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'display_name', 'selected_language', 'total_xp', 'current_streak']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.display_name is string && data.display_name.size() > 0 && data.display_name.size() <= 100 &&
+        data.selected_language in ['ibibio', 'efik'] &&
+        data.total_xp is int && data.total_xp >= 0 &&
+        data.current_streak is int && data.current_streak >= 0 &&
+        (!('email' in data) || (data.email is string && data.email.size() <= 150)) &&
+        (!('longest_streak' in data) || (data.longest_streak is int && data.longest_streak >= 0)) &&
+        (!('daily_goal' in data) || (data.daily_goal is int && data.daily_goal > 0)) &&
+        (!('daily_xp_today' in data) || (data.daily_xp_today is int && data.daily_xp_today >= 0));
+    }
+
+    function isValidProgress(data) {
+      return data.keys().hasAll(['lesson_id', 'completed', 'score', 'xp_earned']) &&
+        data.lesson_id is string && data.lesson_id.size() <= 128 &&
+        data.completed is bool &&
+        data.score is int && data.score >= 0 && data.score <= 100 &&
+        data.xp_earned is int && data.xp_earned >= 0;
+    }
+
+    function isValidAchievement(data) {
+      return data.keys().hasAll(['achievement_id', 'unlocked_at']) &&
+        data.achievement_id is string && data.achievement_id.size() <= 128 &&
+        data.unlocked_at is string && data.unlocked_at.size() <= 64;
+    }
+
+    // -------------------------------------------------------------------
+    // Collection Rules
+    // -------------------------------------------------------------------
+
+    // Users collection: PII strictly protected by isOwner
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if isSignedIn() && resource.data.id == request.auth.uid;
+      allow create: if isValidId(userId) && isOwner(userId) && isValidUser(incoming()) && incoming().id == userId;
+      allow update: if isValidId(userId) && isOwner(userId) && isValidUser(incoming()) && incoming().id == existing().id;
+      allow delete: if isValidId(userId) && isOwner(userId);
+
+      // User lesson progress subcollection
+      match /progress/{lessonId} {
+        allow get, list: if isValidId(userId) && isOwner(userId);
+        allow create, update: if isValidId(userId) && isOwner(userId) && isValidId(lessonId) && isValidProgress(incoming());
+        allow delete: if isValidId(userId) && isOwner(userId);
+      }
+
+      // User achievements subcollection
+      match /achievements/{achievementId} {
+        allow get, list: if isValidId(userId) && isOwner(userId);
+        allow create, update: if isValidId(userId) && isOwner(userId) && isValidId(achievementId) && isValidAchievement(incoming());
+        allow delete: if isValidId(userId) && isOwner(userId);
+      }
+    }
+
+    // Dictionary entries: Public read, no client modification
+    match /dictionary_entries/{entryId} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}
